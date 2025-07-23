@@ -31,7 +31,6 @@ add_executable(${PROJECT_NAME}
         src/main.c
         src/interface.c
         src/imu.c
-        src/buttons.c
         src/ssd1306.c
         )
 

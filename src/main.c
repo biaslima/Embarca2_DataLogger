@@ -15,6 +15,10 @@
 #define I2C_SCL_DISP 15
 #define ENDERECO_DISP 0x3C            // Endereço I2C do display
 
+// Variáveis para controle da gravação
+bool is_recording = false;
+uint32_t sample_count = 0;
+const char *imu_log_filename = "imu_data.csv";
 
 // Trecho para modo BOOTSEL usando o botão B
 #include "pico/bootrom.h"
@@ -56,13 +60,17 @@ int main()
     if (imu_read_raw(acc, gyro)) {
     printf("ACC: %d %d %d | GYRO: %d %d %d\n", acc[0], acc[1], acc[2], gyro[0], gyro[1], gyro[2]);
     }
+
     // Declara os pinos como I2C na Binary Info
     bi_decl(bi_2pins_with_func(I2C_SDA, I2C_SCL, GPIO_FUNC_I2C));
     imu_reset();
-}
+
+    printf("Pressione 's' para iniciar/parar o log do IMU.\n");
+    printf("Pressione 'm' para montar o SD.\n");
+    printf("Pressione 'u' para desmontar o SD.\n");
+    printf("Pressione 'l' para listar arquivos.\n");
 
     bool cor = true;    
-
     while (1)
     {
         // Leitura dos dados de aceleração, giroscópio e temperatura
@@ -80,6 +88,8 @@ int main()
         // Montagem das strings para o display
         char str_roll[20];
         char str_pitch[20];
+        char str_status[20];
+        char str_samples[20];
 
         
         snprintf(str_roll,  sizeof(str_roll),  "%5.1f", roll);

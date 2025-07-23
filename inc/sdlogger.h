@@ -6,7 +6,6 @@
 #include "ff.h" 
 #include "sd_card.h"
 
-
 #ifdef __cplusplus
 extern "C" {
 #endif

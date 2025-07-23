@@ -306,3 +306,9 @@
 57	184	7750000021051162	CMakeFiles/dataLogger.dir/src/interface.c.obj	10eb13f38f82e7c1
 51	362	7750000021001161	CMakeFiles/dataLogger.dir/src/main.c.obj	5c0f17880b42c83
 363	962	7750000024118805	dataLogger.elf	662570fa0b9c7c9
+109	1746	7750083604314706	CMakeFiles/dataLogger.dir/src/main.c.obj	5c0f17880b42c83
+1749	4195	7750083620703101	dataLogger.elf	662570fa0b9c7c9
+45	526	7750084530886765	CMakeFiles/dataLogger.dir/src/main.c.obj	5c0f17880b42c83
+527	1720	7750084535720723	dataLogger.elf	662570fa0b9c7c9
+50	459	7750085543811158	CMakeFiles/dataLogger.dir/src/main.c.obj	5c0f17880b42c83
+461	1172	7750085547935380	dataLogger.elf	662570fa0b9c7c9

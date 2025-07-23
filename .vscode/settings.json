@@ -42,6 +42,7 @@
     "stdbool.h": "c",
     "sd_card.h": "c",
     "i2c.h": "c",
-    "ssd1306.h": "c"
+    "ssd1306.h": "c",
+    "bootrom.h": "c"
   }
 }

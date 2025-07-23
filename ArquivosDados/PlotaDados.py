@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-data = np.loadtxt('adc_data0.txt')
+data = np.loadtxt('adc_data1.txt')
 
 x = data[:,0]
 y = data[:,1]

@@ -1,4 +1,4 @@
-// Padded and checksummed version of: Z:/BDL/SDK/SD_Card/SD_Card03/build/pico-sdk/src/rp2040/boot_stage2/bs2_default.bin
+// Padded and checksummed version of: C:/Users/Anna Beatriz/Documents/EmbarcaTech/Tarefas/Tarefa_22-07-Acelerometro/DataLogger/build/pico-sdk/src/rp2040/boot_stage2/bs2_default.bin
 
 .cpu cortex-m0plus
 .thumb

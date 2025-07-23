@@ -19,15 +19,20 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(PICO_BOARD pico_w CACHE STRING "Board type")
 include(pico_sdk_import.cmake)
-project(Usar_SSD C CXX ASM)
+project(dataLogger C CXX ASM)
 pico_sdk_init()
 
 
 add_subdirectory(lib/FatFs_SPI)    
 
 add_executable(${PROJECT_NAME}  
-        Cartao_FatFS_SPI.c
-        hw_config.c
+        src/sdlogger.c
+        src/hw_config.c
+        src/main.c
+        src/interface.c
+        src/imu.c
+        src/buttons.c
+        src/ssd1306.c
         )
 
     
@@ -37,6 +42,7 @@ target_link_libraries(${PROJECT_NAME}
         FatFs_SPI
         hardware_clocks
         hardware_adc
+        hardware_i2c
         )
 
 pico_enable_stdio_usb(${PROJECT_NAME} 1)

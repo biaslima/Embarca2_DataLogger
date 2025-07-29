@@ -1,55 +1,141 @@
-# FatFS SPI Example - Raspberry Pi Pico
+# 📈 Datalogger de Movimento com IMU (MPU6050)
 
-Este projeto demonstra como usar um cartão SD com sistema de arquivos FAT (FatFS) em um **Raspberry Pi Pico**, realizando operações de leitura, escrita e listagem de arquivos via comandos no terminal.  
-O código também inclui uma rotina de aquisição de dados do ADC (canal 0, GPIO 26) e registro dos dados em arquivo.
-
-## Funcionalidades
-
-- **Formatação**, montagem e desmontagem do cartão SD (com FatFS).
-- **Listagem** de arquivos e diretórios (comando `ls`).
-- **Leitura** do conteúdo de arquivos (comando `cat`).
-- **Aquisição de dados** do ADC e salvamento automático em arquivo (`adc_data2.txt`).
-- **Exibição de espaço livre** no cartão SD.
-- **Configuração de data/hora** do RTC integrado.
-- **Atalhos de teclado** para comandos rápidos no terminal.
-
-## Hardware Necessário
-
-- Cartão microSD (com adaptador para SPI, está no KIT básico do Embarcatech)
-
-## Comandos Disponíveis
-
-
-
-| Comando                               | Descrição                                              | 
-|---------------------------------------|--------------------------------------------------------|
-| `mount`                               | Monta o cartão SD                                      | 
-| `unmount`                             | Desmonta o cartão SD                                   | 
-| `format`                              | Formata o cartão SD                                    | 
-| `ls`                                  | Lista arquivos/diretórios do cartão SD                 |
-| `cat <arquivo>`                       | Mostra o conteúdo de um arquivo                        | 
-| `getfree`                             | Exibe o espaço livre no cartão SD                      |
-| `setrtc <DD> <MM> <YY> <hh> <mm> <ss>`| Ajusta a data/hora do RTC interno do Pico              |
-| `help`                                | Mostra todos os comandos disponíveis                   |
-
-**Atalhos de teclado no terminal (pressione apenas a tecla):**
-
-| Tecla  | Função                                                           |
-|--------|------------------------------------------------------------------|
-| `a`    | Monta o cartão SD (`mount`)                                      |
-| `b`    | Desmonta o cartão SD (`unmount`)                                 |
-| `c`    | Lista os arquivos do cartão SD (`ls`)                            |
-| `d`    | Lê e exibe o conteúdo do arquivo `adc_data2.txt`                 |
-| `e`    | Mostra o espaço livre no cartão SD (`getfree`)                   |
-| `f`    | Captura 128 amostras do ADC e salva no arquivo `adc_data2.txt`   |
-| `h`    | Exibe os comandos disponíveis (`help`)                           |
-
-
-## Gera gráficos
-
-Um arquivo em python é disponibilizado para geração dos gráficos. 
-A biblioteca matplotlib é usada para produção gráfica.
-A IDE do Thonny pode ser utilizada.
-
+Este projeto implementa um **datalogger de movimento portátil** utilizando um microcontrolador Raspberry Pi Pico W e um sensor IMU MPU6050. Os dados de aceleração e giroscópio são capturados continuamente e armazenados em um cartão MicroSD em formato CSV. O sistema oferece **feedback em tempo real** ao usuário por meio de um display OLED, LEDs RGB, buzzer, além de interação via botões e interface serial.
 
 ---
+
+## 📚 Tabela de Conteúdos
+
+- [Visão Geral](#visão-geral)
+- [Funcionalidades](#funcionalidades)
+- [Hardware Utilizado](#hardware-utilizado)
+- [Interação com o Usuário](#interação-com-o-usuário)
+  - [Display OLED](#display-oled)
+  - [LED RGB](#led-rgb)
+  - [Buzzer](#buzzer)
+  - [Botões](#botões)
+- [Comandos Seriais](#comandos-seriais)
+- [Formato dos Dados CSV](#formato-dos-dados-csv)
+- [Análise Externa (Python)](#análise-externa-python)
+- [Desenvolvedora](#desenvolvedora)
+
+---
+
+## 🔍 Visão Geral
+
+O objetivo principal deste projeto é criar um **dispositivo autônomo capaz de registrar dados de movimento**. Ele é ideal para aplicações como:
+
+- Análise de vibração
+- Registro de atividades físicas
+- Experimentos em robótica
+
+Os dados coletados podem ser analisados posteriormente em um computador, com gráficos gerados via Python.
+
+---
+
+## ⚙️ Funcionalidades
+
+- **Captura de Dados IMU**: Leitura contínua de aceleração (X, Y, Z) e giroscópio (X, Y, Z) do MPU6050  
+- **Armazenamento em MicroSD**: Gravação dos dados em arquivo `.csv`  
+- **Interface com o Usuário**: Feedback visual/sonoro via OLED, LED RGB e buzzer  
+- **Controle por Botões**: Início/parada de gravação, montagem/desmontagem do SD  
+- **Comunicação Serial**: Comandos para controle via terminal serial  
+- **Gerenciamento de Erros**: Indicações visuais e sonoras para falhas  
+
+---
+
+## 🔌 Hardware Utilizado
+
+- **Microcontrolador**: Raspberry Pi Pico W  
+- **Sensor IMU**: MPU6050  
+- **Cartão de Memória**: MicroSD  
+- **Display**: OLED SSD1306  
+- **LEDs**: LED RGB  
+- **Áudio**: Buzzer  
+- **Entrada**: Botões táteis  
+
+---
+
+## 🧠 Interação com o Usuário
+
+### 📺 Display OLED
+
+- `"Inicializando..."`: Sistema iniciando  
+- `"SD Nao Montado"`: SD ausente  
+- `"Montando SD..."` ou `"Desmontando SD..."`  
+- `"SD Montado! / Pronto p/ uso"`  
+- `"GRAVANDO..."`: Dados sendo registrados  
+- `"ERRO!"`: Falha no IMU ou cartão SD  
+
+---
+
+### 🌈 LED RGB
+
+- **Amarelo**: Inicializando / montando SD  
+- **Verde**: Pronto para gravação  
+- **Vermelho + Azul piscando**: Gravando  
+- **Azul piscando**: Acessando SD  
+- **Roxo piscando**: Erro crítico  
+
+---
+
+### 🔊 Buzzer
+
+- 1 beep curto: Início da gravação  
+- 2 beeps curtos: Parada da gravação  
+- Sequência de beeps: Eventos do sistema  
+
+---
+
+### 🔘 Botões
+
+- **Botão A**: Iniciar / Parar gravação  
+- **Botão B**: Montar / Desmontar o SD  
+
+> Os botões utilizam interrupções e debounce por software.
+
+---
+
+## 🖥️ Comandos Seriais
+
+Com um terminal serial conectado ao Pico W:
+
+| Comando | Função                         |
+|---------|--------------------------------|
+| `s`     | Iniciar / Parar gravação       |
+| `m`     | Montar o cartão SD             |
+| `u`     | Desmontar o cartão SD          |
+| `l`     | Listar arquivos no SD          |
+| `h`     | Mostrar ajuda dos comandos     |
+
+---
+
+## 📄 Formato dos Dados CSV
+
+Os arquivos `.csv` seguem este cabeçalho:
+numero_amostra,accel_x,accel_y,accel_z,giro_x,giro_y,giro_z
+
+yaml
+Copiar
+Editar
+
+- `numero_amostra`: Contador de amostras  
+- `accel_*`: Aceleração nos eixos X, Y, Z  
+- `giro_*`: Giroscópio nos eixos X, Y, Z  
+
+---
+
+## 📊 Análise Externa (Python)
+
+Um script Python (`analysis.py`) pode ser usado para:
+
+- Ler os arquivos CSV gerados
+- Plotar gráficos de aceleração e rotação
+- O eixo X representa o tempo (baseado na ordem das amostras)
+
+---
+
+## 👩‍💻 Desenvolvedora
+
+- **Anna Beatriz Silva Lima**
+

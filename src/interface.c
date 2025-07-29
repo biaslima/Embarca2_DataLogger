@@ -190,20 +190,15 @@ void interface_update_state(system_state_t state, bool sd_mounted, bool recordin
             last_blink_time = current_time;
         }
     } else if (is_system_recording) {
-        // Gravação: Vermelho sólido. Azul pisca se houver acesso ao SD.
-        gpio_put(LED_RED_PIN, true); // Vermelho sólido
-        
-        if (is_sd_accessing) {
-            // Azul pisca a 100ms quando acessando SD durante gravação
-            if (current_time - last_blink_time >= 100) {
-                blink_state = !blink_state;
-                gpio_put(LED_BLUE_PIN, blink_state);
-                last_blink_time = current_time;
-            }
+     if (current_time - last_blink_time >= 300) {
+        blink_state = !blink_state;
+        if (blink_state) {
+            rgb_led_set_individual(true, false, false); // Vermelho
         } else {
-            gpio_put(LED_BLUE_PIN, false); // Azul desligado se não estiver acessando SD
-            blink_state = false; // Garante que blink_state não interfira
+            rgb_led_set_individual(false, false, true); // Azul
         }
+        last_blink_time = current_time;
+    }
     } else if (current_led_state == STATE_MOUNTING_SD || current_led_state == STATE_UNMOUNTING_SD) {
         // Amarelo sólido: Montando ou Desmontando SD
         rgb_led_set_individual(true, true, false); // Amarelo

@@ -225,6 +225,8 @@ bool mount_sd(void) {
     current_state = STATE_MOUNTING_SD; 
     sd_display_status = SD_STATE_MOUNTING; // Define status para display
     sd_display_status_time = to_ms_since_boot(get_absolute_time());
+
+    interface_update_state(current_state, sd_mounted, is_recording); 
     display_update(); // Força atualização do display
 
     interface_sd_access_indication(true); // LED azul/amarelo piscando durante a montagem
@@ -267,6 +269,8 @@ void unmount_sd(void) {
     current_state = STATE_UNMOUNTING_SD;
     sd_display_status = SD_STATE_UNMOUNTING; // Define status para display
     sd_display_status_time = to_ms_since_boot(get_absolute_time());
+
+    interface_update_state(current_state, sd_mounted, is_recording); 
     display_update(); // Força atualização do display
 
     interface_sd_access_indication(true); // LED azul/amarelo piscando durante a desmontagem

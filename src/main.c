@@ -179,41 +179,38 @@ void display_init(void) {
     ssd1306_config(&ssd);
 }
 
-//Atualiza o conteúdo exibido no display OLED com base no estado do sistema.
+//Atualiza o conteúdo exibido no display 
 void display_update(void) {
     char line[20];
     uint32_t current_time = to_ms_since_boot(get_absolute_time());
 
     ssd1306_fill(&ssd, false);
     ssd1306_rect(&ssd, 3, 3, 122, 60, true, false);
-    ssd1306_line(&ssd, 3, 25, 123, 25, true);
-    ssd1306_line(&ssd, 3, 37, 123, 37, true);
-    
-    ssd1306_draw_string(&ssd, "CEPEDI   TIC37", 8, 6);
-    ssd1306_draw_string(&ssd, "IMU DATALOGGER", 8, 16);
-    
-    if (sd_display_status != SD_STATE_IDLE && 
+    ssd1306_line(&ssd, 3, 18, 123, 18, true);
+    ssd1306_draw_string(&ssd, "IMU DATALOGGER", 8, 6);
+
+    if (sd_display_status != SD_STATE_IDLE &&
         (current_time - sd_display_status_time < SD_DISPLAY_STATUS_DURATION_MS)) {
         switch (sd_display_status) {
             case SD_STATE_MOUNTING:
-                ssd1306_draw_string(&ssd, "Montando SD...", 10, 28);
-                ssd1306_draw_string(&ssd, "Aguarde", 35, 41);
+                ssd1306_draw_string(&ssd, "Montando SD...", 8, 28);
+                ssd1306_draw_string(&ssd, "Aguarde", 36, 38);
                 break;
             case SD_STATE_UNMOUNTING:
-                ssd1306_draw_string(&ssd, "Desmontando SD...", 5, 28);
-                ssd1306_draw_string(&ssd, "Aguarde", 35, 41);
+                ssd1306_draw_string(&ssd, "Desmontando SD...", 0, 28);
+                ssd1306_draw_string(&ssd, "Aguarde", 36, 38);
                 break;
             case SD_STATE_MOUNT_SUCCESS:
-                ssd1306_draw_string(&ssd, "SD Montado!", 25, 28);
-                ssd1306_draw_string(&ssd, "Pronto p/ uso", 15, 41);
+                ssd1306_draw_string(&ssd, "SD Montado!", 20, 28);
+                ssd1306_draw_string(&ssd, "Pronto p/ uso", 12, 38);
                 break;
             case SD_STATE_MOUNT_FAIL:
-                ssd1306_draw_string(&ssd, "Falha Montar SD!", 5, 28);
-                ssd1306_draw_string(&ssd, "Verifique cartao", 8, 41);
+                ssd1306_draw_string(&ssd, "Falha Montar SD!", 0, 28);
+                ssd1306_draw_string(&ssd, "Verifique cartao", 0, 38);
                 break;
             case SD_STATE_UNMOUNT_SUCCESS:
-                ssd1306_draw_string(&ssd, "SD Desmontado!", 10, 28);
-                ssd1306_draw_string(&ssd, "Remova c/ seg", 10, 41);
+                ssd1306_draw_string(&ssd, "SD Desmontado!", 8, 28);
+                ssd1306_draw_string(&ssd, "Remova c/ seg", 12, 38);
                 break;
             default:
                 break;
@@ -222,44 +219,46 @@ void display_update(void) {
         sd_display_status = SD_STATE_IDLE;
         switch (current_state) {
             case STATE_INITIALIZING:
-                ssd1306_draw_string(&ssd, "Inicializando...", 10, 28);
-                ssd1306_draw_string(&ssd, "Aguarde", 35, 41);
+                ssd1306_draw_string(&ssd, "Inicializando...", 0, 28);
+                ssd1306_draw_string(&ssd, "Aguarde", 36, 38);
                 break;
-            
+
             case STATE_MOUNTING_SD:
-                ssd1306_draw_string(&ssd, "Montando SD...", 10, 28);
-                ssd1306_draw_string(&ssd, "Aguarde", 35, 41);
+                ssd1306_draw_string(&ssd, "Montando SD...", 8, 28);
+                ssd1306_draw_string(&ssd, "Aguarde", 36, 38);
                 break;
             case STATE_UNMOUNTING_SD:
-                ssd1306_draw_string(&ssd, "Desmontando SD...", 5, 28);
-                ssd1306_draw_string(&ssd, "Aguarde", 35, 41);
+                ssd1306_draw_string(&ssd, "Desmontando SD...", 0, 28);
+                ssd1306_draw_string(&ssd, "Aguarde", 36, 38);
                 break;
-                
+
             case STATE_READY:
                 if (sd_mounted) {
-                    ssd1306_draw_string(&ssd, "Sistema Pronto", 15, 28);
-                    ssd1306_draw_string(&ssd, "A=gravar B=ejetar", 8, 41);
+                    ssd1306_draw_string(&ssd, "Sistema Pronto", 8, 28);
+                    ssd1306_draw_string(&ssd, "A=Gravar", (128 - (8 * 8)) / 2, 38); // Linha 1
+                    ssd1306_draw_string(&ssd, "B=Tirar", (128 - (7 * 8)) / 2, 48);   // Linha 2
                 } else {
                     ssd1306_draw_string(&ssd, "SD Nao Montado", 8, 28);
-                    ssd1306_draw_string(&ssd, "B=Montar SD", 12, 41);
+                    ssd1306_draw_string(&ssd, "B = Montar SD", 12, 38);
                 }
                 break;
-                
+
             case STATE_RECORDING:
-                ssd1306_draw_string(&ssd, "GRAVANDO...", 25, 28);
-                
+                ssd1306_draw_string(&ssd, "GRAVANDO...", 20, 28);
+
                 snprintf(line, sizeof(line), "Amostras: %lu", sample_count);
-                ssd1306_draw_string(&ssd, line, 10, 41);
-                
+                ssd1306_draw_string(&ssd, line, (128 - (strlen(line) * 8)) / 2, 38);
+
                 uint32_t recording_time = (to_ms_since_boot(get_absolute_time()) - recording_start_time) / 1000;
                 snprintf(line, sizeof(line), "Tempo: %lus", recording_time);
-                ssd1306_draw_string(&ssd, line, 30, 52);
+                ssd1306_draw_string(&ssd, line, (128 - (strlen(line) * 8)) / 2, 48);
                 break;
-                
+
             case STATE_ERROR:
-                ssd1306_draw_string(&ssd, "ERRO!", 45, 28);
-                ssd1306_draw_string(&ssd, "Verifique SD/IMU", 15, 41);
-                ssd1306_draw_string(&ssd, "B=tentar nov", 5, 52);
+                ssd1306_draw_string(&ssd, "ERRO!", 44, 28);
+                ssd1306_draw_string(&ssd, "Verifique", (128 - (9 * 8)) / 2, 38); 
+                ssd1306_draw_string(&ssd, "SD/IMU", (128 - (6 * 8)) / 2, 48);    
+                ssd1306_draw_string(&ssd, "B = tentar nov", 8, 52);
                 break;
         }
     }

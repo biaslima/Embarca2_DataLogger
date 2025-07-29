@@ -3,7 +3,6 @@
 
 #include "pico/stdlib.h"
 
-// ... (seus defines para pinos, etc.)
 #define LED_RED_PIN 13
 #define LED_GREEN_PIN 11
 #define LED_BLUE_PIN 12
@@ -11,25 +10,15 @@
 #define BUTTON_B_PIN 6
 #define BUZZER_PIN 21
 
-// Adicionar novos estados para montagem/desmontagem
+// Estados para montagem/desmontagem
 typedef enum {
     STATE_INITIALIZING,
     STATE_READY,
     STATE_RECORDING,
     STATE_ERROR,
-    STATE_MOUNTING_SD,   // Novo estado para montagem do SD
-    STATE_UNMOUNTING_SD  // Novo estado para desmontagem do SD
+    STATE_MOUNTING_SD,   
+    STATE_UNMOUNTING_SD  
 } system_state_t;
-
-// Tipos de cor RGB (ainda que a função set_color não seja mais usada diretamente, pode ser útil manter)
-typedef enum {
-    RGB_OFF,
-    RGB_RED,
-    RGB_GREEN,
-    RGB_BLUE,
-    RGB_YELLOW,
-    RGB_PURPLE
-} rgb_color_t;
 
 // Sequências de buzzer
 typedef enum {

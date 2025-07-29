@@ -21,10 +21,10 @@
 #define ENDERECO_DISP 0x3C
 
 //CONFIGURAÇÕES DO SISTEMA
-#define SAMPLE_RATE_HZ 100
+#define SAMPLE_RATE_HZ 10 // ALTERADO: Reduzindo a taxa de amostragem
 #define SAMPLE_INTERVAL_MS (1000 / SAMPLE_RATE_HZ)
-#define DISPLAY_UPDATE_INTERVAL_MS 250  // ALTERAÇÃO: Reduzido de 500ms para 250ms
-#define SD_CHECK_INTERVAL_MS 500        // NOVA: Intervalo para verificar SD card
+#define DISPLAY_UPDATE_INTERVAL_MS 250
+#define SD_CHECK_INTERVAL_MS 500
 
 //VARIÁVEIS GLOBAIS
 static system_state_t current_state = STATE_INITIALIZING;
@@ -35,9 +35,22 @@ static uint32_t recording_start_time = 0;
 static const char *imu_log_filename = "imu_data.csv";
 static ssd1306_t ssd;
 
+// NOVOS ESTADOS PARA DISPLAY (mantidos como antes, não afetam a lógica de LED diretamente)
+typedef enum {
+    SD_STATE_IDLE,
+    SD_STATE_MOUNTING,
+    SD_STATE_UNMOUNTING,
+    SD_STATE_MOUNT_SUCCESS,
+    SD_STATE_MOUNT_FAIL,
+    SD_STATE_UNMOUNT_SUCCESS
+} sd_display_status_t;
+
+static sd_display_status_t sd_display_status = SD_STATE_IDLE;
+static uint32_t sd_display_status_time = 0;
+static const uint32_t SD_DISPLAY_STATUS_DURATION_MS = 1500; // Tempo para a mensagem de status aparecer
+
 // NOVA FUNÇÃO: Verifica se o SD card está fisicamente presente e montado
 bool check_sd_status(void) {
-    // Tenta verificar se o SD está montado tentando acessar informações do sistema de arquivos
     DWORD fre_clust, fre_sect, tot_sect;
     FATFS *p_fs = sd_get_fs_by_name(sd_get_by_num(0)->pcName);
     if (!p_fs) return false;
@@ -45,84 +58,102 @@ bool check_sd_status(void) {
     FRESULT fr = f_getfree(sd_get_by_num(0)->pcName, &fre_clust, &p_fs);
     return (fr == FR_OK);
 }
-
-// NOVA FUNÇÃO: Auto-detecção e montagem do SD
-void auto_mount_sd(void) {
-    if (!sd_mounted) {
-        printf("Tentando montar SD automaticamente...\n");
-        interface_sd_access_indication(true); // Mostra azul durante montagem
-        run_mount();
-        if (check_sd_status()) {
-            sd_mounted = true;
-            current_state = STATE_READY;
-            buzzer_play_sequence(BUZZER_SD_MOUNT);
-            printf("SD montado automaticamente!\n");
-        } else {
-            printf("SD não detectado.\n");
-            current_state = STATE_READY; // Vai para READY mas sem SD (ficará roxo)
-        }
-        interface_sd_access_indication(false);
-    }
-}
-
 //FUNÇÕES DO DISPLAY
 void display_init(void) {
-    // Inicializa I2C do Display OLED
     i2c_init(I2C_PORT_DISP, 400 * 1000);
     gpio_set_function(I2C_SDA_DISP, GPIO_FUNC_I2C);
     gpio_set_function(I2C_SCL_DISP, GPIO_FUNC_I2C);
     gpio_pull_up(I2C_SDA_DISP);
     gpio_pull_up(I2C_SCL_DISP);
 
-    // Configura display
     ssd1306_init(&ssd, WIDTH, HEIGHT, false, ENDERECO_DISP, I2C_PORT_DISP);
     ssd1306_config(&ssd);
 }
 
 void display_update(void) {
     char line[20];
+    uint32_t current_time = to_ms_since_boot(get_absolute_time());
 
     ssd1306_fill(&ssd, false);
     ssd1306_rect(&ssd, 3, 3, 122, 60, true, false);
     ssd1306_line(&ssd, 3, 25, 123, 25, true);
     ssd1306_line(&ssd, 3, 37, 123, 37, true);
     
-    // Cabeçalho fixo
     ssd1306_draw_string(&ssd, "CEPEDI   TIC37", 8, 6);
     ssd1306_draw_string(&ssd, "IMU DATALOGGER", 8, 16);
     
-    switch (current_state) {
-        case STATE_INITIALIZING:
-            ssd1306_draw_string(&ssd, "Inicializando...", 10, 28);
-            ssd1306_draw_string(&ssd, "Aguarde", 35, 41);
-            break;
+    // Prioridade para mensagens de status do SD
+    if (sd_display_status != SD_STATE_IDLE && 
+        (current_time - sd_display_status_time < SD_DISPLAY_STATUS_DURATION_MS)) {
+        switch (sd_display_status) {
+            case SD_STATE_MOUNTING:
+                ssd1306_draw_string(&ssd, "Montando SD...", 10, 28);
+                ssd1306_draw_string(&ssd, "Aguarde", 35, 41);
+                break;
+            case SD_STATE_UNMOUNTING:
+                ssd1306_draw_string(&ssd, "Desmontando SD...", 5, 28);
+                ssd1306_draw_string(&ssd, "Aguarde", 35, 41);
+                break;
+            case SD_STATE_MOUNT_SUCCESS:
+                ssd1306_draw_string(&ssd, "SD Montado!", 25, 28);
+                ssd1306_draw_string(&ssd, "Pronto p/ uso", 15, 41);
+                break;
+            case SD_STATE_MOUNT_FAIL:
+                ssd1306_draw_string(&ssd, "Falha Montar SD!", 5, 28);
+                ssd1306_draw_string(&ssd, "Verifique cartao", 8, 41);
+                break;
+            case SD_STATE_UNMOUNT_SUCCESS:
+                ssd1306_draw_string(&ssd, "SD Desmontado!", 10, 28);
+                ssd1306_draw_string(&ssd, "Remova c/ seg", 10, 41);
+                break;
+            default:
+                break;
+        }
+    } else { // Estados normais do sistema
+        sd_display_status = SD_STATE_IDLE; // Reseta o status do display SD
+        switch (current_state) {
+            case STATE_INITIALIZING:
+                ssd1306_draw_string(&ssd, "Inicializando...", 10, 28);
+                ssd1306_draw_string(&ssd, "Aguarde", 35, 41);
+                break;
             
-        case STATE_READY:
-            if (sd_mounted) {
-                ssd1306_draw_string(&ssd, "Sistema Pronto", 15, 28);
-                ssd1306_draw_string(&ssd, "A=gravar B=ejetar", 8, 41);
-            } else {
-                ssd1306_draw_string(&ssd, "SD Nao Detectado", 8, 28);
-                ssd1306_draw_string(&ssd, "Insira cartao SD", 12, 41);
-            }
-            break;
-            
-        case STATE_RECORDING:
-            ssd1306_draw_string(&ssd, "GRAVANDO...", 25, 28);
-            
-            snprintf(line, sizeof(line), "Amostras: %lu", sample_count);
-            ssd1306_draw_string(&ssd, line, 10, 41);
-            
-            uint32_t recording_time = (to_ms_since_boot(get_absolute_time()) - recording_start_time) / 1000;
-            snprintf(line, sizeof(line), "Tempo: %lus", recording_time);
-            ssd1306_draw_string(&ssd, line, 30, 52);
-            break;
-            
-        case STATE_ERROR:
-            ssd1306_draw_string(&ssd, "ERRO!", 45, 28);
-            ssd1306_draw_string(&ssd, "Verifique SD", 15, 41);
-            ssd1306_draw_string(&ssd, "B=tentar novamente", 5, 52);
-            break;
+            // Novos estados para montagem/desmontagem no display
+            case STATE_MOUNTING_SD: // Usar o novo estado para display também
+                ssd1306_draw_string(&ssd, "Montando SD...", 10, 28);
+                ssd1306_draw_string(&ssd, "Aguarde", 35, 41);
+                break;
+            case STATE_UNMOUNTING_SD: // Usar o novo estado para display também
+                ssd1306_draw_string(&ssd, "Desmontando SD...", 5, 28);
+                ssd1306_draw_string(&ssd, "Aguarde", 35, 41);
+                break;
+                
+            case STATE_READY:
+                if (sd_mounted) {
+                    ssd1306_draw_string(&ssd, "Sistema Pronto", 15, 28);
+                    ssd1306_draw_string(&ssd, "A=gravar B=ejetar", 8, 41);
+                } else {
+                    ssd1306_draw_string(&ssd, "SD Nao Montado", 8, 28); // Alterado de "Nao Detectado" para "Nao Montado"
+                    ssd1306_draw_string(&ssd, "B=Montar SD", 12, 41); // Sugere o botão B para montar
+                }
+                break;
+                
+            case STATE_RECORDING:
+                ssd1306_draw_string(&ssd, "GRAVANDO...", 25, 28);
+                
+                snprintf(line, sizeof(line), "Amostras: %lu", sample_count);
+                ssd1306_draw_string(&ssd, line, 10, 41);
+                
+                uint32_t recording_time = (to_ms_since_boot(get_absolute_time()) - recording_start_time) / 1000;
+                snprintf(line, sizeof(line), "Tempo: %lus", recording_time);
+                ssd1306_draw_string(&ssd, line, 30, 52);
+                break;
+                
+            case STATE_ERROR:
+                ssd1306_draw_string(&ssd, "ERRO!", 45, 28);
+                ssd1306_draw_string(&ssd, "Verifique SD/IMU", 15, 41);
+                ssd1306_draw_string(&ssd, "B=tentar nov", 5, 52); // Simplificado
+                break;
+        }
     }
     
     ssd1306_send_data(&ssd);
@@ -137,8 +168,7 @@ bool start_recording(void) {
         return false;
     }
     
-    // Indicação visual imediata
-    interface_sd_access_indication(true);
+    interface_sd_access_indication(true); // Indica acesso ao SD para o LED azul
     
     if (sdlogger_start(imu_log_filename)) {
         is_recording = true;
@@ -146,10 +176,8 @@ bool start_recording(void) {
         recording_start_time = to_ms_since_boot(get_absolute_time());
         current_state = STATE_RECORDING;
         
-        // Finaliza indicação de acesso ao SD
-        interface_sd_access_indication(false);
+        interface_sd_access_indication(false); // Fim da indicação de acesso para abertura de arquivo
         
-        // Feedback sonoro
         buzzer_play_sequence(BUZZER_START_RECORDING);
         printf("Gravação iniciada! (%s)\n", imu_log_filename);
         
@@ -165,7 +193,7 @@ bool start_recording(void) {
 
 void stop_recording(void) {
     if (is_recording) {
-        interface_sd_access_indication(true);
+        interface_sd_access_indication(true); // Indica acesso ao SD para fechamento de arquivo
         
         sdlogger_stop();
         is_recording = false;
@@ -187,42 +215,72 @@ void toggle_recording(void) {
 }
 
 bool mount_sd(void) {
+    if (sd_mounted) {
+        printf("SD já montado.\n");
+        return true;
+    }
     printf("Montando SD...\n");
-    interface_sd_access_indication(true);
+    // Altera current_state para indicar montagem
+    system_state_t prev_state = current_state; // Salva o estado anterior
+    current_state = STATE_MOUNTING_SD; 
+    sd_display_status = SD_STATE_MOUNTING; // Define status para display
+    sd_display_status_time = to_ms_since_boot(get_absolute_time());
+    display_update(); // Força atualização do display
+
+    interface_sd_access_indication(true); // LED azul/amarelo piscando durante a montagem
     
     run_mount();
-    sd_mounted = check_sd_status(); // ALTERAÇÃO: Usa nova função de verificação
+    sd_mounted = check_sd_status();
+    
+    // Retorna ao estado READY ou ERROR
     if (sd_mounted) {
         current_state = STATE_READY;
         buzzer_play_sequence(BUZZER_SD_MOUNT);
         printf("SD montado com sucesso!\n");
+        sd_display_status = SD_STATE_MOUNT_SUCCESS; // Define status para display
+        sd_display_status_time = to_ms_since_boot(get_absolute_time());
     } else {
-        current_state = STATE_ERROR;
+        current_state = STATE_ERROR; // Se falhou, vai para estado de ERRO (roxo piscando)
         buzzer_play_sequence(BUZZER_ERROR);
         printf("Falha ao montar SD!\n");
+        sd_display_status = SD_STATE_MOUNT_FAIL; // Define status para display
+        sd_display_status_time = to_ms_since_boot(get_absolute_time());
     }
     
-    interface_sd_access_indication(false);
+    interface_sd_access_indication(false); // Fim da indicação de acesso
     return sd_mounted;
 }
 
 void unmount_sd(void) {
+    if (!sd_mounted) {
+        printf("SD já desmontado.\n");
+        return;
+    }
     if (is_recording) {
         stop_recording();
         printf("Gravação interrompida devido ao desmonte do SD.\n");
     }
     
     printf("Desmontando SD...\n");
-    interface_sd_access_indication(true);
+    // Altera current_state para indicar desmontagem
+    system_state_t prev_state = current_state; // Salva o estado anterior
+    current_state = STATE_UNMOUNTING_SD;
+    sd_display_status = SD_STATE_UNMOUNTING; // Define status para display
+    sd_display_status_time = to_ms_since_boot(get_absolute_time());
+    display_update(); // Força atualização do display
+
+    interface_sd_access_indication(true); // LED azul/amarelo piscando durante a desmontagem
     
     run_unmount();
     sd_mounted = false;
-    current_state = STATE_READY;
+    current_state = STATE_READY; // Sempre volta para READY após desmontar
     
     buzzer_play_sequence(BUZZER_SD_UNMOUNT);
     printf("SD desmontado!\n");
+    sd_display_status = SD_STATE_UNMOUNT_SUCCESS; // Define status para display
+    sd_display_status_time = to_ms_since_boot(get_absolute_time());
     
-    interface_sd_access_indication(false);
+    interface_sd_access_indication(false); // Fim da indicação de acesso
 }
 
 void process_serial_command(char cmd) {
@@ -231,11 +289,11 @@ void process_serial_command(char cmd) {
             toggle_recording();
             break;
             
-        case 'm': // Mount SD
+        case 'm': // Mount SD - mantido para depuração via serial
             mount_sd();
             break;
             
-        case 'u': // Unmount SD
+        case 'u': // Unmount SD - mantido para depuração via serial
             unmount_sd();
             break;
             
@@ -252,8 +310,8 @@ void process_serial_command(char cmd) {
         case 'h': // Help
             printf("\n=== COMANDOS DISPONÍVEIS ===\n");
             printf("s - Iniciar/Parar gravação do IMU\n");
-            printf("m - Montar SD card\n");
-            printf("u - Desmontar SD card\n");
+            printf("m - Montar SD card (serial apenas)\n"); // Atualizado
+            printf("u - Desmontar SD card (serial apenas)\n"); // Atualizado
             printf("l - Listar arquivos no SD\n");
             printf("h - Mostrar ajuda\n");
             printf("=============================\n\n");
@@ -272,14 +330,12 @@ void process_buttons(void) {
         toggle_recording();
     }
     
-    // Botão B: Desmontar SD quando montado, ou tentar montar quando não montado
+    // Botão B: Montar SD quando não montado, ou desmontar quando montado
     if (button_b_get_pressed()) {
         printf("Botão B pressionado - SD Management\n");
         if (sd_mounted) {
-            // Se SD montado, desmonta
             unmount_sd();
         } else {
-            // Se SD não montado, tenta montar
             mount_sd();
         }
     }
@@ -293,8 +349,8 @@ void capture_imu_sample(void) {
     if (imu_read_raw(accel, gyro)) {
         sample_count++;
         
-        // Indicação rápida de acesso ao SD
-        interface_sd_access_indication(true);
+        // Indica acesso ao SD SOMENTE durante a escrita do log, para o LED azul.
+        interface_sd_access_indication(true); 
         bool success = sdlogger_log_sample(sample_count, accel, gyro);
         interface_sd_access_indication(false);
         
@@ -306,7 +362,7 @@ void capture_imu_sample(void) {
         }
         
         // Debug reduzido para não impactar performance
-        if (sample_count % 1000 == 0) { // A cada 10 segundos a 100Hz
+        if (sample_count % (SAMPLE_RATE_HZ * 10) == 0) { // A cada 10 segundos
             printf("Amostra %lu: ACC[%d,%d,%d] GYRO[%d,%d,%d]\n", 
                    sample_count, accel[0], accel[1], accel[2], 
                    gyro[0], gyro[1], gyro[2]);
@@ -315,7 +371,7 @@ void capture_imu_sample(void) {
         printf("Erro na leitura do IMU na amostra %lu\n", sample_count);
         static uint8_t error_count = 0;
         error_count++;
-        if (error_count >= 5) { // Mais tolerante a erros pontuais
+        if (error_count >= 5) {
             printf("Muitos erros de leitura do IMU. Parando gravação.\n");
             stop_recording();
             current_state = STATE_ERROR;
@@ -323,7 +379,6 @@ void capture_imu_sample(void) {
         }
     }
 }
-// ============================
 
 int main(void) {
     stdio_init_all();
@@ -335,22 +390,18 @@ int main(void) {
     
     current_state = STATE_INITIALIZING;
     
-    // Inicializa perifericos
     display_init();
     display_update();
     interface_init();
-    interface_update_state(current_state, sd_mounted, sample_count);
+    interface_update_state(current_state, sd_mounted, is_recording);
     
-    // Sinal de inicialização
     buzzer_play_sequence(BUZZER_INIT);
     sleep_ms(500);
     
-    // Inicializa IMU
     printf("Inicializando IMU MPU6050...\n");
     bi_decl(bi_2pins_with_func(I2C_SDA, I2C_SCL, GPIO_FUNC_I2C));
     imu_init();
     
-    // Testa leitura do IMU
     int16_t test_acc[3], test_gyro[3];
     if (imu_read_raw(test_acc, test_gyro)) {
         printf("✓ IMU inicializado com sucesso!\n");
@@ -363,21 +414,15 @@ int main(void) {
         buzzer_play_sequence(BUZZER_ERROR);
     }
     
-    // NOVA: Tenta montar SD automaticamente na inicialização
-    printf("Verificando SD card...\n");
-    auto_mount_sd();
-    
-    // Se chegou aqui e não teve erro no IMU, está pronto
     if (current_state != STATE_ERROR) {
         current_state = STATE_READY;
     }
     
     printf("SISTEMA PRONTO\n");
-    printf("Comandos: 's'=gravar, 'm'=montar SD, 'h'=ajuda\n");
-    printf("Botões: A=gravar, B=SD\n");
+    printf("Comandos: 's'=gravar, 'm'=montar SD (serial), 'h'=ajuda\n"); // Atualizado
+    printf("Botões: A=gravar, B=SD (Montar/Desmontar)\n"); // Atualizado
     printf("Taxa de amostragem: %d Hz\n", SAMPLE_RATE_HZ);
     
-    // Variáveis de timing otimizadas
     uint32_t last_display_update = 0;
     uint32_t last_sample_time = 0;
     uint32_t last_interface_update = 0;
@@ -387,42 +432,36 @@ int main(void) {
     while (true) {
         uint32_t current_time = to_ms_since_boot(get_absolute_time());
         
-        // MÁXIMA PRIORIDADE: Atualização da interface (LEDs) - 20ms para responsividade
         if (current_time - last_interface_update >= 20) {
-            interface_update_state(current_state, sd_mounted, sample_count);
+            interface_update_state(current_state, sd_mounted, is_recording);
             last_interface_update = current_time;
         }
 
-        // ALTA PRIORIDADE: Verificação de botões - 50ms para responsividade
         if (current_time - last_button_check >= 50) {
             process_buttons();
             last_button_check = current_time;
         }
         
-        // PRIORIDADE MÉDIA: Comandos seriais (verificação a cada loop)
         int c = getchar_timeout_us(0);
         if (c != PICO_ERROR_TIMEOUT) {
             process_serial_command((char)c);
         }
         
-        // PRIORIDADE MÉDIA: Atualização do display - 200ms
-        if (current_time - last_display_update >= 200) {
+        if (current_time - last_display_update >= DISPLAY_UPDATE_INTERVAL_MS) { // Usa a constante
             display_update();
             last_display_update = current_time;
         }
         
-        // PRIORIDADE ALTA: Captura de amostras IMU - conforme SAMPLE_INTERVAL_MS
         if (current_time - last_sample_time >= SAMPLE_INTERVAL_MS) {
             capture_imu_sample();
             last_sample_time = current_time;
         }
         
-        // BAIXA PRIORIDADE: Verificação periódica do SD - 1000ms
+        // Verificação periódica do SD (apenas para detecção de remoção, não para montagem automática)
         if (current_time - last_sd_check >= 1000) {
             bool previous_sd_state = sd_mounted;
-            if (sd_mounted) {
-                // Indica acesso ao SD durante verificação
-                interface_sd_access_indication(true);
+            if (sd_mounted) { // Só checa se estiver montado
+                interface_sd_access_indication(true); // Indica acesso ao SD (curto)
                 sd_mounted = check_sd_status();
                 interface_sd_access_indication(false);
                 
@@ -432,16 +471,13 @@ int main(void) {
                         stop_recording();
                         printf("Gravação interrompida - SD removido!\n");
                     }
-                    current_state = STATE_READY; // Volta ao estado ready mas sem SD (ficará roxo)
+                    current_state = STATE_READY; // Volta ao estado ready mas sem SD (ficará roxo sólido)
                 }
-            } else {
-                auto_mount_sd();
             }
             last_sd_check = current_time;
         }
         
-        // Sleep mínimo para não sobrecarregar o processador
-        sleep_us(500); // 500 microssegundos ao invés de 1ms
+        sleep_us(500);
     }
     
     return 0;

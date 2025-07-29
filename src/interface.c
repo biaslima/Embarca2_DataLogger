@@ -17,13 +17,14 @@ static const uint32_t DEBOUNCE_TIME_MS = 200; // Tempo adequado para debounce
 // Estados do sistema para LEDs
 static system_state_t current_led_state = STATE_INITIALIZING;
 static bool is_sd_accessing = false;
-static uint32_t sd_access_start_time = 0;
+static bool is_system_recording = false;
+static bool sd_is_mounted = false;
 
 // Controle de piscadas
 static uint32_t last_blink_time = 0;
 static bool blink_state = false;
 
-// INICIALIZAÇÃO 
+// INICIALIZAÇÃO
 void interface_init(void) {
     // Inicializa LEDs RGB
     gpio_init(LED_RED_PIN);
@@ -63,7 +64,11 @@ void buzzer_init(void) {
     buzzer_channel = pwm_gpio_to_channel(BUZZER_PIN);
     
     pwm_set_clkdiv(buzzer_slice, 125.0f);
-    pwm_set_wrap(buzzer_slice, 1000);
+    // Definir 'wrap' aqui para que seja visível
+    uint32_t wrap = 1000; // Valor padrão, pode ser ajustado se o buzzer_init tiver uma frequência fixa
+    pwm_set_wrap(buzzer_slice, wrap);
+    // Correção: pwm_set_chan_level espera slice, channel e level
+    pwm_set_chan_level(buzzer_slice, buzzer_channel, wrap / 2); // Corrigido
     pwm_set_enabled(buzzer_slice, false);
 }
 
@@ -115,39 +120,18 @@ void buzzer_play_sequence(buzzer_sequence_t sequence) {
 }
 
 // ============== LEDs RGB ==============
-void rgb_led_set_color(rgb_color_t color) {
-    // Desliga todos os LEDs primeiro
+// Função auxiliar para desligar todos os LEDs
+static void rgb_led_turn_off_all(void) {
     gpio_put(LED_RED_PIN, false);
     gpio_put(LED_GREEN_PIN, false);
     gpio_put(LED_BLUE_PIN, false);
-    
-    // Liga apenas os LEDs necessários
-    switch (color) {
-        case RGB_OFF:
-            break;
-            
-        case RGB_RED:
-            gpio_put(LED_RED_PIN, true);
-            break;
-            
-        case RGB_GREEN:
-            gpio_put(LED_GREEN_PIN, true);
-            break;
-            
-        case RGB_BLUE:
-            gpio_put(LED_BLUE_PIN, true);
-            break;
-            
-        case RGB_YELLOW:
-            gpio_put(LED_RED_PIN, true);
-            gpio_put(LED_GREEN_PIN, true);
-            break;
-            
-        case RGB_PURPLE:
-            gpio_put(LED_RED_PIN, true);
-            gpio_put(LED_BLUE_PIN, true);
-            break;
-    }
+}
+
+// Função para ligar LEDs de forma individual
+static void rgb_led_set_individual(bool red, bool green, bool blue) {
+    gpio_put(LED_RED_PIN, red);
+    gpio_put(LED_GREEN_PIN, green);
+    gpio_put(LED_BLUE_PIN, blue);
 }
 
 // ============== BOTÕES ==============
@@ -155,13 +139,11 @@ void button_irq_handler(uint gpio, uint32_t events) {
     uint32_t current_time = to_ms_since_boot(get_absolute_time());
     
     if (gpio == BUTTON_A_PIN && (events & GPIO_IRQ_EDGE_FALL)) {
-        // Debounce individual para botão A
         if (current_time - last_button_a_time >= DEBOUNCE_TIME_MS) {
             button_a_pressed = true;
             last_button_a_time = current_time;
         }
     } else if (gpio == BUTTON_B_PIN && (events & GPIO_IRQ_EDGE_FALL)) {
-        // Debounce individual para botão B
         if (current_time - last_button_b_time >= DEBOUNCE_TIME_MS) {
             button_b_pressed = true;
             last_button_b_time = current_time;
@@ -188,65 +170,69 @@ bool button_b_get_pressed(void) {
 // ============== GERENCIAMENTO DO SD ==============
 void interface_sd_access_indication(bool accessing) {
     is_sd_accessing = accessing;
-    if (accessing) {
-        sd_access_start_time = to_ms_since_boot(get_absolute_time());
-    }
 }
 
 // ============== ATUALIZAÇÃO GERAL ==============
-void interface_update_state(system_state_t state, bool sd_mounted, uint32_t sample_count) {
+void interface_update_state(system_state_t state, bool sd_mounted, bool recording_active) {
     current_led_state = state;
+    is_system_recording = recording_active;
+    sd_is_mounted = sd_mounted;
     uint32_t current_time = to_ms_since_boot(get_absolute_time());
     
-    // Sistema de prioridades para os LEDs conforme especificação
-    if (is_sd_accessing) {
-        // Prioridade MÁXIMA: Acesso ao SD - SEMPRE azul piscando
-        if (current_time - last_blink_time >= 100) { // Pisca a cada 100ms
+    rgb_led_turn_off_all(); // Começa desligando tudo
+
+    // Lógica de prioridade para os LEDs
+    if (current_led_state == STATE_ERROR) {
+        // Roxo piscando: Prioridade máxima para erro geral (ex: IMU falhou)
+        if (current_time - last_blink_time >= 300) {
             blink_state = !blink_state;
-            rgb_led_set_color(blink_state ? RGB_BLUE : RGB_OFF);
+            rgb_led_set_individual(blink_state, false, blink_state); // Roxo
             last_blink_time = current_time;
         }
-    } else if (current_led_state == STATE_ERROR) {
-        // Prioridade ALTA: Estado de Erro (roxo piscando)
-        if (current_time - last_blink_time >= 300) { // Pisca a cada 300ms
+    } else if (is_system_recording) {
+        // Gravação: Vermelho sólido. Azul pisca se houver acesso ao SD.
+        gpio_put(LED_RED_PIN, true); // Vermelho sólido
+        
+        if (is_sd_accessing) {
+            // Azul pisca a 100ms quando acessando SD durante gravação
+            if (current_time - last_blink_time >= 100) {
+                blink_state = !blink_state;
+                gpio_put(LED_BLUE_PIN, blink_state);
+                last_blink_time = current_time;
+            }
+        } else {
+            gpio_put(LED_BLUE_PIN, false); // Azul desligado se não estiver acessando SD
+            blink_state = false; // Garante que blink_state não interfira
+        }
+    } else if (current_led_state == STATE_MOUNTING_SD || current_led_state == STATE_UNMOUNTING_SD) {
+        // Amarelo sólido: Montando ou Desmontando SD
+        rgb_led_set_individual(true, true, false); // Amarelo
+        blink_state = false; // Garante que não pisque
+    } else if (current_led_state == STATE_INITIALIZING) {
+        // Inicializando: Amarelo sólido (continua)
+        rgb_led_set_individual(true, true, false); // Amarelo
+        blink_state = false; // Garante que não pisque
+    } else if (current_led_state == STATE_READY) {
+        if (sd_is_mounted) {
+            // Pronto com SD montado: Verde sólido
+            rgb_led_set_individual(false, true, false); // Verde
+            blink_state = false; // Garante que não pisque
+        } else {
+            // Pronto sem SD montado: Roxo sólido (sem piscar)
+            rgb_led_set_individual(true, false, true); // Roxo sólido
+            blink_state = false; // Garante que não pisque
+        }
+    } else if (is_sd_accessing) {
+        // Acessando SD (e não em gravação, nem erro, nem montando/desmontando): Azul piscando
+        // Ex: Listando arquivos via serial
+        if (current_time - last_blink_time >= 100) {
             blink_state = !blink_state;
-            rgb_led_set_color(blink_state ? RGB_PURPLE : RGB_OFF);
+            gpio_put(LED_BLUE_PIN, blink_state);
             last_blink_time = current_time;
         }
     } else {
-        // Estados normais do sistema (cores sólidas)
-        switch (current_led_state) {
-            case STATE_INITIALIZING:
-                rgb_led_set_color(RGB_YELLOW); // Amarelo: Sistema inicializando / Montando cartão SD
-                break;
-                
-            case STATE_READY:
-                if (sd_mounted) {
-                    rgb_led_set_color(RGB_GREEN); // Verde: Sistema pronto com SD montado
-                } else {
-                    // SD não montado - roxo piscando (somente após inicialização)
-                    if (current_time - last_blink_time >= 300) {
-                        blink_state = !blink_state;
-                        rgb_led_set_color(blink_state ? RGB_PURPLE : RGB_OFF);
-                        last_blink_time = current_time;
-                    }
-                }
-                break;
-                
-            case STATE_RECORDING:
-                rgb_led_set_color(RGB_RED); // Vermelho: Captura de dados em andamento
-                break;
-                
-            default:
-                rgb_led_set_color(RGB_OFF);
-                break;
-        }
-        
-        // Reset do estado de piscar apenas quando estamos em estados sólidos
-        if (current_led_state == STATE_INITIALIZING || 
-            (current_led_state == STATE_READY && sd_mounted) ||
-            (current_led_state == STATE_RECORDING && !is_sd_accessing)) {
-            blink_state = false;
-        }
+        // Default: Desliga tudo
+        rgb_led_turn_off_all();
+        blink_state = false;
     }
 }

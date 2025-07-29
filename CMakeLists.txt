@@ -40,6 +40,7 @@ target_link_libraries(${PROJECT_NAME}
         pico_stdlib 
         FatFs_SPI
         hardware_clocks
+        hardware_pwm
         hardware_adc
         hardware_i2c
         )
